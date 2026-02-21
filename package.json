@@ -1,0 +1,12 @@
+{
+  "name": "leechslayer",
+  "version": "1.0.0",
+  "main": "leechslayer.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node leechslayer.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
