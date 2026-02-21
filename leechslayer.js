@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js")
 const fs = require("fs");
 const axios = require("axios");
 
-// ====== RENDER FREE FIX ======
+// ====== RENDER KEEP ALIVE (Free Web Service Fix) ======
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("LeechSlayer running.");
@@ -35,23 +35,31 @@ async function pushToGitHub() {
   try {
     const path = "leeches.json";
 
-    const { data } = await axios.get(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
-      {
-        headers: {
-          Authorization: `token ${GITHUB_TOKEN}`
-        }
-      }
-    );
+    let sha = null;
 
-    const sha = data.sha;
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+        {
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`
+          }
+        }
+      );
+      sha = data.sha;
+    } catch (err) {
+      // File does not exist yet — that's fine
+      if (err.response?.status !== 404) {
+        throw err;
+      }
+    }
 
     await axios.put(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
       {
         message: "Update leeches.json via LeechSlayer bot",
         content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
-        sha: sha
+        ...(sha && { sha })
       },
       {
         headers: {
@@ -63,6 +71,7 @@ async function pushToGitHub() {
     console.log("GitHub updated successfully.");
   } catch (error) {
     console.error("GitHub push error:", error.response?.data || error.message);
+    throw error;
   }
 }
 
@@ -97,29 +106,45 @@ client.once("ready", async () => {
 });
 
 // ====== COMMAND HANDLER ======
-client.on("interactionCreate", async interaction => {
+client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  const name = interaction.options.getString("username").toLowerCase();
+  try {
+    // Prevent Discord timeout during cold start
+    await interaction.deferReply({ ephemeral: true });
 
-  if (interaction.commandName === "check") {
-    if (leeches.has(name)) {
-      return interaction.reply(`❌ ${name} is a leech.`);
-    } else {
-      return interaction.reply(`✅ ${name} is not a leech.`);
-    }
-  }
+    const raw = interaction.options.getString("username") || "";
+    const name = raw.toLowerCase().trim();
 
-  if (interaction.commandName === "add") {
-    if (leeches.has(name)) {
-      return interaction.reply(`⚠ ${name} already exists in the list.`);
+    if (!name) {
+      return interaction.editReply("⚠ Please provide a username.");
     }
 
-    leeches.add(name);
-    saveLeeches();
-    await pushToGitHub();
+    if (interaction.commandName === "check") {
+      if (leeches.has(name)) {
+        return interaction.editReply(`❌ ${name} is a leech.`);
+      } else {
+        return interaction.editReply(`✅ ${name} is not a leech.`);
+      }
+    }
 
-    return interaction.reply(`✅ ${name} added to the leech list.`);
+    if (interaction.commandName === "add") {
+      if (leeches.has(name)) {
+        return interaction.editReply(`⚠ ${name} already exists in the list.`);
+      }
+
+      leeches.add(name);
+      saveLeeches();
+      await pushToGitHub();
+
+      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
+    }
+
+  } catch (err) {
+    console.error("Command error:", err);
+    try {
+      await interaction.editReply("❌ Something went wrong. Check Render logs.");
+    } catch {}
   }
 });
 
