@@ -1,23 +1,18 @@
 const http = require("http");
 const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
-const axios = require("axios");
 
-// ====== RENDER KEEP ALIVE (Free Web Service Fix) ======
+// ================= KEEP RENDER ALIVE =================
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("LeechSlayer running.");
-}).listen(process.env.PORT || 3000);
+}).listen(process.env.PORT || 10000);
 
-// ====== CONFIG ======
+// ================= CONFIG =================
 const TOKEN = process.env.BOT_TOKEN;
 const DATA_FILE = "./leeches.json";
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO = process.env.GITHUB_REPO;
-
-// ====== LOAD DATA ======
+// ================= LOAD DATA =================
 let leeches = new Set();
 
 if (fs.existsSync(DATA_FILE)) {
@@ -25,56 +20,17 @@ if (fs.existsSync(DATA_FILE)) {
   data.forEach(name => leeches.add(name.toLowerCase()));
 }
 
-// ====== SAVE LOCALLY ======
+// ================= SAVE DATA =================
 function saveLeeches() {
   fs.writeFileSync(DATA_FILE, JSON.stringify([...leeches], null, 2));
 }
 
-// ====== PUSH TO GITHUB ======
-async function pushToGitHub() {
-  try {
-    const path = "leeches.json";
-    let sha = null;
-
-    try {
-      const { data } = await axios.get(
-        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
-        {
-          headers: { Authorization: `token ${GITHUB_TOKEN}` }
-        }
-      );
-      sha = data.sha;
-    } catch (err) {
-      if (err.response?.status !== 404) throw err;
-    }
-
-    await axios.put(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
-      {
-        message: "Update leeches.json via LeechSlayer bot",
-        content: Buffer.from(
-          JSON.stringify([...leeches], null, 2)
-        ).toString("base64"),
-        ...(sha && { sha })
-      },
-      {
-        headers: { Authorization: `token ${GITHUB_TOKEN}` }
-      }
-    );
-
-    console.log("GitHub updated successfully.");
-  } catch (error) {
-    console.error("GitHub push error:", error.response?.data || error.message);
-    throw error;
-  }
-}
-
-// ====== DISCORD CLIENT ======
+// ================= DISCORD CLIENT =================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`LeechSlayer online as ${client.user.tag}`);
 
   const commands = [
@@ -99,47 +55,46 @@ client.once("ready", async () => {
   await client.application.commands.set(commands);
 });
 
-// ====== COMMAND HANDLER ======
+// ================= COMMAND HANDLER =================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
-    // PUBLIC defer (removed ephemeral)
-    await interaction.deferReply();
-
     const raw = interaction.options.getString("username") || "";
     const name = raw.toLowerCase().trim();
 
     if (!name) {
-      return interaction.editReply("⚠ Please provide a username.");
+      return interaction.reply("⚠ Please provide a username.");
     }
 
+    // CHECK COMMAND
     if (interaction.commandName === "check") {
       if (leeches.has(name)) {
-        return interaction.editReply(`❌ ${name} is a leech.`);
+        return interaction.reply(`❌ ${name} is a leech.`);
       } else {
-        return interaction.editReply(`✅ ${name} is not a leech.`);
+        return interaction.reply(`✅ ${name} is not a leech.`);
       }
     }
 
+    // ADD COMMAND
     if (interaction.commandName === "add") {
       if (leeches.has(name)) {
-        return interaction.editReply(`⚠ ${name} already exists in the list.`);
+        return interaction.reply(`⚠ ${name} already exists in the list.`);
       }
 
       leeches.add(name);
       saveLeeches();
-      await pushToGitHub();
 
-      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
+      return interaction.reply(`✅ ${name} added successfully.`);
     }
 
   } catch (err) {
     console.error("Command error:", err);
-    try {
-      await interaction.editReply("❌ Something went wrong. Check Render logs.");
-    } catch {}
+    if (!interaction.replied) {
+      await interaction.reply("❌ Something went wrong.");
+    }
   }
 });
 
+// ================= LOGIN =================
 client.login(TOKEN);
