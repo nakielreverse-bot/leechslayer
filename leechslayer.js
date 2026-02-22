@@ -3,13 +3,13 @@ const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js")
 const fs = require("fs");
 const axios = require("axios");
 
-// ====== RENDER KEEP ALIVE (Free Web Service Fix) ======
+// ================= RENDER KEEP ALIVE =================
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("LeechSlayer running.");
 }).listen(process.env.PORT || 3000);
 
-// ====== CONFIG ======
+// ================= CONFIG =================
 const TOKEN = process.env.BOT_TOKEN;
 const DATA_FILE = "./leeches.json";
 
@@ -17,7 +17,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
-// ====== LOAD DATA ======
+// ================= LOAD DATA =================
 let leeches = new Set();
 
 if (fs.existsSync(DATA_FILE)) {
@@ -25,46 +25,40 @@ if (fs.existsSync(DATA_FILE)) {
   data.forEach(name => leeches.add(name.toLowerCase()));
 }
 
-// ====== SAVE LOCALLY ======
+// ================= SAVE LOCALLY =================
 function saveLeeches() {
   fs.writeFileSync(DATA_FILE, JSON.stringify([...leeches], null, 2));
 }
 
-// ====== PUSH TO GITHUB ======
+// ================= PUSH TO GITHUB =================
 async function pushToGitHub() {
   try {
     const path = "leeches.json";
-
     let sha = null;
 
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
         {
-          headers: {
-            Authorization: `token ${GITHUB_TOKEN}`
-          }
+          headers: { Authorization: `token ${GITHUB_TOKEN}` }
         }
       );
       sha = data.sha;
     } catch (err) {
-      // File does not exist yet — that's fine
-      if (err.response?.status !== 404) {
-        throw err;
-      }
+      if (err.response?.status !== 404) throw err;
     }
 
     await axios.put(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
       {
         message: "Update leeches.json via LeechSlayer bot",
-        content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
+        content: Buffer.from(
+          JSON.stringify([...leeches], null, 2)
+        ).toString("base64"),
         ...(sha && { sha })
       },
       {
-        headers: {
-          Authorization: `token ${GITHUB_TOKEN}`
-        }
+        headers: { Authorization: `token ${GITHUB_TOKEN}` }
       }
     );
 
@@ -75,7 +69,7 @@ async function pushToGitHub() {
   }
 }
 
-// ====== DISCORD CLIENT ======
+// ================= DISCORD CLIENT =================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -105,13 +99,13 @@ client.once("ready", async () => {
   await client.application.commands.set(commands);
 });
 
-// ====== COMMAND HANDLER ======
+// ================= COMMAND HANDLER =================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
-    // Prevent Discord timeout during cold start
-    await interaction.deferReply({ ephemeral: true });
+    // PUBLIC reply (no longer private)
+    await interaction.deferReply({ ephemeral: false });
 
     const raw = interaction.options.getString("username") || "";
     const name = raw.toLowerCase().trim();
