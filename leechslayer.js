@@ -3,7 +3,7 @@ const express = require("express");
 const fs = require("fs");
 
 // ==============================
-// Environment Check
+// ENV CHECK
 // ==============================
 const TOKEN = process.env.BOT_TOKEN;
 
@@ -13,9 +13,10 @@ if (!TOKEN) {
 }
 
 console.log("🚀 Booting...");
+console.log("Token length:", TOKEN.length); // Helps confirm it's not empty
 
 // ==============================
-// Express Server (Required for Render Web Service)
+// EXPRESS SERVER (Required for Web Service)
 // ==============================
 const app = express();
 
@@ -30,7 +31,7 @@ app.listen(PORT, () => {
 });
 
 // ==============================
-// Discord Client
+// DISCORD CLIENT
 // ==============================
 const client = new Client({
   intents: [
@@ -41,7 +42,7 @@ const client = new Client({
 });
 
 // ==============================
-// Load Name List
+// LOAD NAME LIST
 // ==============================
 let leechList = [];
 
@@ -58,14 +59,29 @@ function loadLeeches() {
 loadLeeches();
 
 // ==============================
-// Ready Event
+// READY EVENT
 // ==============================
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// Message Command
+// ERROR HANDLING
+// ==============================
+client.on("error", (err) => {
+  console.error("❌ Discord client error:", err);
+});
+
+client.on("shardError", (err) => {
+  console.error("❌ Shard error:", err);
+});
+
+client.on("disconnect", () => {
+  console.log("⚠ Disconnected from Discord");
+});
+
+// ==============================
+// MESSAGE COMMAND
 // ==============================
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
@@ -90,8 +106,14 @@ client.on("messageCreate", (message) => {
 });
 
 // ==============================
-// Login
+// LOGIN
 // ==============================
-client.login(TOKEN).catch((err) => {
-  console.error("❌ Login failed:", err);
-});
+console.log("🔐 Attempting Discord login...");
+
+client.login(TOKEN)
+  .then(() => {
+    console.log("🔓 Login promise resolved.");
+  })
+  .catch((err) => {
+    console.error("❌ Login failed:", err);
+  });
