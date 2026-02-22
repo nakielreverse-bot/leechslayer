@@ -4,7 +4,7 @@ const axios = require("axios");
 const http = require("http");
 
 // ==============================
-// RENDER KEEP ALIVE (Web Service)
+// RENDER KEEP-ALIVE (Web Service)
 // ==============================
 http.createServer((req, res) => {
   res.writeHead(200);
@@ -22,7 +22,7 @@ const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
 if (!TOKEN) {
-  console.error("❌ BOT_TOKEN missing.");
+  console.error("BOT_TOKEN missing.");
   process.exit(1);
 }
 
@@ -48,6 +48,8 @@ function saveLeeches() {
 // PUSH TO GITHUB
 // ==============================
 async function pushToGitHub() {
+  if (!GITHUB_TOKEN) return;
+
   try {
     const path = "leeches.json";
     let sha = null;
@@ -56,16 +58,12 @@ async function pushToGitHub() {
       const { data } = await axios.get(
         `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
         {
-          headers: {
-            Authorization: `token ${GITHUB_TOKEN}`
-          }
+          headers: { Authorization: `token ${GITHUB_TOKEN}` }
         }
       );
       sha = data.sha;
     } catch (err) {
-      if (err.response?.status !== 404) {
-        throw err;
-      }
+      if (err.response?.status !== 404) throw err;
     }
 
     await axios.put(
@@ -76,15 +74,13 @@ async function pushToGitHub() {
         ...(sha && { sha })
       },
       {
-        headers: {
-          Authorization: `token ${GITHUB_TOKEN}`
-        }
+        headers: { Authorization: `token ${GITHUB_TOKEN}` }
       }
     );
 
-    console.log("GitHub updated successfully.");
-  } catch (error) {
-    console.error("GitHub push error:", error.response?.data || error.message);
+    console.log("GitHub updated.");
+  } catch (err) {
+    console.error("GitHub push error:", err.response?.data || err.message);
   }
 }
 
@@ -96,7 +92,7 @@ const client = new Client({
 });
 
 // ==============================
-// READY EVENT
+// READY
 // ==============================
 client.once("ready", async () => {
   console.log(`LeechSlayer online as ${client.user.tag}`);
@@ -137,7 +133,7 @@ client.on("interactionCreate", async (interaction) => {
     const name = raw.toLowerCase().trim();
 
     if (!name) {
-      return interaction.editReply("⚠ Please provide a username.");
+      return interaction.editReply("Provide a username.");
     }
 
     if (interaction.commandName === "check") {
@@ -150,20 +146,20 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "add") {
       if (leeches.has(name)) {
-        return interaction.editReply(`⚠ ${name} already exists in the list.`);
+        return interaction.editReply(`${name} already exists.`);
       }
 
       leeches.add(name);
       saveLeeches();
       await pushToGitHub();
 
-      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
+      return interaction.editReply(`✅ ${name} added.`);
     }
 
   } catch (err) {
     console.error("Command error:", err);
     try {
-      await interaction.editReply("❌ Something went wrong. Check Render logs.");
+      await interaction.editReply("Something went wrong.");
     } catch {}
   }
 });
