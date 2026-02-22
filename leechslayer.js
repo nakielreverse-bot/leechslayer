@@ -34,31 +34,37 @@ function saveLeeches() {
 async function pushToGitHub() {
   try {
     const path = "leeches.json";
+
     let sha = null;
 
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
         {
-          headers: { Authorization: `token ${GITHUB_TOKEN}` }
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`
+          }
         }
       );
       sha = data.sha;
     } catch (err) {
-      if (err.response?.status !== 404) throw err;
+      // File does not exist yet — that's fine
+      if (err.response?.status !== 404) {
+        throw err;
+      }
     }
 
     await axios.put(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
       {
         message: "Update leeches.json via LeechSlayer bot",
-        content: Buffer.from(
-          JSON.stringify([...leeches], null, 2)
-        ).toString("base64"),
+        content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
         ...(sha && { sha })
       },
       {
-        headers: { Authorization: `token ${GITHUB_TOKEN}` }
+        headers: {
+          Authorization: `token ${GITHUB_TOKEN}`
+        }
       }
     );
 
@@ -104,8 +110,8 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
-    // PUBLIC defer (removed ephemeral)
-    await interaction.deferReply();
+    // Prevent Discord timeout during cold start
+    await interaction.deferReply({ ephemeral: true });
 
     const raw = interaction.options.getString("username") || "";
     const name = raw.toLowerCase().trim();
