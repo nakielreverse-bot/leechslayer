@@ -1,3 +1,6 @@
+console.log("BOOTING...");
+console.log("TOKEN VALUE:", process.env.BOT_TOKEN);
+
 const http = require("http");
 const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
@@ -20,9 +23,13 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 // ================= LOAD DATA =================
 let leeches = new Set();
 
-if (fs.existsSync(DATA_FILE)) {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  data.forEach(name => leeches.add(name.toLowerCase()));
+try {
+  if (fs.existsSync(DATA_FILE)) {
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    data.forEach(name => leeches.add(name.toLowerCase()));
+  }
+} catch (err) {
+  console.error("JSON LOAD ERROR:", err);
 }
 
 // ================= SAVE LOCAL =================
@@ -42,18 +49,27 @@ async function pushToGitHub() {
     );
     sha = data.sha;
   } catch (err) {
-    if (err.response?.status !== 404) throw err;
+    if (err.response?.status !== 404) {
+      console.error("GitHub fetch error:", err.response?.data || err.message);
+      return;
+    }
   }
 
-  await axios.put(
-    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
-    {
-      message: "Update leeches.json via LeechSlayer",
-      content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
-      ...(sha && { sha })
-    },
-    { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
-  );
+  try {
+    await axios.put(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+      {
+        message: "Update leeches.json via LeechSlayer",
+        content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
+        ...(sha && { sha })
+      },
+      { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
+    );
+
+    console.log("GitHub updated successfully.");
+  } catch (err) {
+    console.error("GitHub push error:", err.response?.data || err.message);
+  }
 }
 
 // ================= DISCORD CLIENT =================
@@ -121,7 +137,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================= LOGIN WITH ERROR LOGGING =================
+// ================= LOGIN WITH FORCED LOGGING =================
 client.login(TOKEN)
   .then(() => console.log("Discord login successful"))
   .catch(err => console.error("LOGIN FAILED:", err));
