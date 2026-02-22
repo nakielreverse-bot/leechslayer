@@ -20,9 +20,13 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 // ================= LOAD DATA =================
 let leeches = new Set();
 
-if (fs.existsSync(DATA_FILE)) {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  data.forEach(name => leeches.add(name.toLowerCase()));
+try {
+  if (fs.existsSync(DATA_FILE)) {
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    data.forEach(name => leeches.add(name.toLowerCase()));
+  }
+} catch (err) {
+  console.error("JSON LOAD ERROR:", err);
 }
 
 // ================= SAVE LOCALLY =================
@@ -65,7 +69,6 @@ async function pushToGitHub() {
     console.log("GitHub updated successfully.");
   } catch (error) {
     console.error("GitHub push error:", error.response?.data || error.message);
-    throw error;
   }
 }
 
@@ -104,42 +107,46 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
-    // PUBLIC reply (no longer private)
-    await interaction.deferReply({ ephemeral: false });
-
     const raw = interaction.options.getString("username") || "";
     const name = raw.toLowerCase().trim();
 
     if (!name) {
-      return interaction.editReply("⚠ Please provide a username.");
+      return interaction.reply("⚠ Please provide a username.");
     }
 
+    // ===== CHECK =====
     if (interaction.commandName === "check") {
       if (leeches.has(name)) {
-        return interaction.editReply(`❌ ${name} is a leech.`);
+        return interaction.reply(`❌ ${name} is a leech.`);
       } else {
-        return interaction.editReply(`✅ ${name} is not a leech.`);
+        return interaction.reply(`✅ ${name} is not a leech.`);
       }
     }
 
+    // ===== ADD =====
     if (interaction.commandName === "add") {
       if (leeches.has(name)) {
-        return interaction.editReply(`⚠ ${name} already exists in the list.`);
+        return interaction.reply(`⚠ ${name} already exists in the list.`);
       }
 
       leeches.add(name);
       saveLeeches();
       await pushToGitHub();
 
-      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
+      return interaction.reply(`✅ ${name} added and pushed to GitHub.`);
     }
 
   } catch (err) {
     console.error("Command error:", err);
     try {
-      await interaction.editReply("❌ Something went wrong. Check Render logs.");
+      if (!interaction.replied) {
+        await interaction.reply("❌ Something went wrong.");
+      }
     } catch {}
   }
 });
 
-client.login(TOKEN);
+// ================= LOGIN =================
+client.login(TOKEN).catch(err => {
+  console.error("LOGIN FAILED:", err);
+});
