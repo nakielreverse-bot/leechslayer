@@ -4,10 +4,15 @@ const fs = require("fs");
 const axios = require("axios");
 
 // ================= RENDER KEEP ALIVE =================
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end("LeechSlayer running.");
-}).listen(process.env.PORT || 3000);
+});
+
+// 🔥 IMPORTANT: NO fallback port
+server.listen(process.env.PORT, () => {
+  console.log("Web server listening on port", process.env.PORT);
+});
 
 // ================= CONFIG =================
 const TOKEN = process.env.BOT_TOKEN;
@@ -114,7 +119,6 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply("⚠ Please provide a username.");
     }
 
-    // ===== CHECK =====
     if (interaction.commandName === "check") {
       if (leeches.has(name)) {
         return interaction.reply(`❌ ${name} is a leech.`);
@@ -123,7 +127,6 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ===== ADD =====
     if (interaction.commandName === "add") {
       if (leeches.has(name)) {
         return interaction.reply(`⚠ ${name} already exists in the list.`);
