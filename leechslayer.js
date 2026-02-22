@@ -3,18 +3,13 @@ const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js")
 const fs = require("fs");
 const axios = require("axios");
 
-// ================= RENDER KEEP ALIVE =================
-const server = http.createServer((req, res) => {
+// ====== RENDER KEEP ALIVE (Free Web Service Fix) ======
+http.createServer((req, res) => {
   res.writeHead(200);
   res.end("LeechSlayer running.");
-});
+}).listen(process.env.PORT || 3000);
 
-// 🔥 IMPORTANT: NO fallback port
-server.listen(process.env.PORT, () => {
-  console.log("Web server listening on port", process.env.PORT);
-});
-
-// ================= CONFIG =================
+// ====== CONFIG ======
 const TOKEN = process.env.BOT_TOKEN;
 const DATA_FILE = "./leeches.json";
 
@@ -22,24 +17,20 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
-// ================= LOAD DATA =================
+// ====== LOAD DATA ======
 let leeches = new Set();
 
-try {
-  if (fs.existsSync(DATA_FILE)) {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    data.forEach(name => leeches.add(name.toLowerCase()));
-  }
-} catch (err) {
-  console.error("JSON LOAD ERROR:", err);
+if (fs.existsSync(DATA_FILE)) {
+  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  data.forEach(name => leeches.add(name.toLowerCase()));
 }
 
-// ================= SAVE LOCALLY =================
+// ====== SAVE LOCALLY ======
 function saveLeeches() {
   fs.writeFileSync(DATA_FILE, JSON.stringify([...leeches], null, 2));
 }
 
-// ================= PUSH TO GITHUB =================
+// ====== PUSH TO GITHUB ======
 async function pushToGitHub() {
   try {
     const path = "leeches.json";
@@ -74,10 +65,11 @@ async function pushToGitHub() {
     console.log("GitHub updated successfully.");
   } catch (error) {
     console.error("GitHub push error:", error.response?.data || error.message);
+    throw error;
   }
 }
 
-// ================= DISCORD CLIENT =================
+// ====== DISCORD CLIENT ======
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -107,49 +99,47 @@ client.once("ready", async () => {
   await client.application.commands.set(commands);
 });
 
-// ================= COMMAND HANDLER =================
+// ====== COMMAND HANDLER ======
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
+    // PUBLIC defer (removed ephemeral)
+    await interaction.deferReply();
+
     const raw = interaction.options.getString("username") || "";
     const name = raw.toLowerCase().trim();
 
     if (!name) {
-      return interaction.reply("⚠ Please provide a username.");
+      return interaction.editReply("⚠ Please provide a username.");
     }
 
     if (interaction.commandName === "check") {
       if (leeches.has(name)) {
-        return interaction.reply(`❌ ${name} is a leech.`);
+        return interaction.editReply(`❌ ${name} is a leech.`);
       } else {
-        return interaction.reply(`✅ ${name} is not a leech.`);
+        return interaction.editReply(`✅ ${name} is not a leech.`);
       }
     }
 
     if (interaction.commandName === "add") {
       if (leeches.has(name)) {
-        return interaction.reply(`⚠ ${name} already exists in the list.`);
+        return interaction.editReply(`⚠ ${name} already exists in the list.`);
       }
 
       leeches.add(name);
       saveLeeches();
       await pushToGitHub();
 
-      return interaction.reply(`✅ ${name} added and pushed to GitHub.`);
+      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
     }
 
   } catch (err) {
     console.error("Command error:", err);
     try {
-      if (!interaction.replied) {
-        await interaction.reply("❌ Something went wrong.");
-      }
+      await interaction.editReply("❌ Something went wrong. Check Render logs.");
     } catch {}
   }
 });
 
-// ================= LOGIN =================
-client.login(TOKEN).catch(err => {
-  console.error("LOGIN FAILED:", err);
-});
+client.login(TOKEN);
