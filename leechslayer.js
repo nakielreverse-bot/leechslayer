@@ -13,10 +13,10 @@ if (!TOKEN) {
 }
 
 console.log("🚀 Booting...");
-console.log("Token length:", TOKEN.length); // Helps confirm it's not empty
+console.log("Token length:", TOKEN.length);
 
 // ==============================
-// EXPRESS SERVER (Required for Web Service)
+// EXPRESS SERVER (Required for Render Web Service)
 // ==============================
 const app = express();
 
@@ -39,6 +39,29 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+});
+
+// ==============================
+// DEBUG + ERROR LOGGING
+// ==============================
+client.on("debug", (info) => {
+  console.log("DEBUG:", info);
+});
+
+client.on("error", (err) => {
+  console.error("❌ Discord client error:", err);
+});
+
+client.on("shardError", (err) => {
+  console.error("❌ Shard error:", err);
+});
+
+client.on("shardReady", (id) => {
+  console.log(`🟢 Shard ${id} ready`);
+});
+
+client.on("disconnect", () => {
+  console.log("⚠ Disconnected from Discord");
 });
 
 // ==============================
@@ -66,28 +89,13 @@ client.once("ready", () => {
 });
 
 // ==============================
-// ERROR HANDLING
-// ==============================
-client.on("error", (err) => {
-  console.error("❌ Discord client error:", err);
-});
-
-client.on("shardError", (err) => {
-  console.error("❌ Shard error:", err);
-});
-
-client.on("disconnect", () => {
-  console.log("⚠ Disconnected from Discord");
-});
-
-// ==============================
-// MESSAGE COMMAND
+// COMMAND HANDLER
 // ==============================
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
 
   if (message.content.startsWith("!check ")) {
-    const name = message.content.split("!check ")[1].trim();
+    const name = message.content.split("!check ")[1]?.trim();
 
     if (!name) {
       return message.reply("Provide a name.");
