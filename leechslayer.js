@@ -1,127 +1,174 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const express = require("express");
+const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
+const axios = require("axios");
+const http = require("http");
 
 // ==============================
-// ENV CHECK
+// RENDER KEEP ALIVE (Web Service)
+// ==============================
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("LeechSlayer running.");
+}).listen(process.env.PORT || 3000);
+
+// ==============================
+// CONFIG
 // ==============================
 const TOKEN = process.env.BOT_TOKEN;
+const DATA_FILE = "./leeches.json";
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_OWNER = process.env.GITHUB_OWNER;
+const GITHUB_REPO = process.env.GITHUB_REPO;
 
 if (!TOKEN) {
-  console.error("❌ BOT_TOKEN not found in environment variables");
+  console.error("❌ BOT_TOKEN missing.");
   process.exit(1);
 }
 
-console.log("🚀 Booting...");
-console.log("Token length:", TOKEN.length);
+// ==============================
+// LOAD DATA
+// ==============================
+let leeches = new Set();
+
+if (fs.existsSync(DATA_FILE)) {
+  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  data.forEach(name => leeches.add(name.toLowerCase()));
+  console.log(`Loaded ${leeches.size} names.`);
+}
 
 // ==============================
-// EXPRESS SERVER (Required for Render Web Service)
+// SAVE LOCALLY
 // ==============================
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("Bot is alive.");
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`🌐 Web server running on port ${PORT}`);
-});
+function saveLeeches() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([...leeches], null, 2));
+}
 
 // ==============================
-// DISCORD CLIENT
+// PUSH TO GITHUB
 // ==============================
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
-
-// ==============================
-// DEBUG + ERROR LOGGING
-// ==============================
-client.on("debug", (info) => {
-  console.log("DEBUG:", info);
-});
-
-client.on("error", (err) => {
-  console.error("❌ Discord client error:", err);
-});
-
-client.on("shardError", (err) => {
-  console.error("❌ Shard error:", err);
-});
-
-client.on("shardReady", (id) => {
-  console.log(`🟢 Shard ${id} ready`);
-});
-
-client.on("disconnect", () => {
-  console.log("⚠ Disconnected from Discord");
-});
-
-// ==============================
-// LOAD NAME LIST
-// ==============================
-let leechList = [];
-
-function loadLeeches() {
+async function pushToGitHub() {
   try {
-    const data = fs.readFileSync("./leeches.json", "utf8");
-    leechList = JSON.parse(data);
-    console.log(`📄 Loaded ${leechList.length} names.`);
-  } catch (err) {
-    console.error("⚠ Could not load leeches.json:", err);
+    const path = "leeches.json";
+    let sha = null;
+
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+        {
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`
+          }
+        }
+      );
+      sha = data.sha;
+    } catch (err) {
+      if (err.response?.status !== 404) {
+        throw err;
+      }
+    }
+
+    await axios.put(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+      {
+        message: "Update leeches.json via LeechSlayer bot",
+        content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
+        ...(sha && { sha })
+      },
+      {
+        headers: {
+          Authorization: `token ${GITHUB_TOKEN}`
+        }
+      }
+    );
+
+    console.log("GitHub updated successfully.");
+  } catch (error) {
+    console.error("GitHub push error:", error.response?.data || error.message);
   }
 }
 
-loadLeeches();
+// ==============================
+// DISCORD CLIENT (MINIMAL INTENTS)
+// ==============================
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
 
 // ==============================
 // READY EVENT
 // ==============================
-client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+client.once("ready", async () => {
+  console.log(`LeechSlayer online as ${client.user.tag}`);
+
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("check")
+      .setDescription("Check if username is a leech")
+      .addStringOption(option =>
+        option.setName("username")
+          .setDescription("Username to check")
+          .setRequired(true)
+      ),
+    new SlashCommandBuilder()
+      .setName("add")
+      .setDescription("Add a username to the leech list")
+      .addStringOption(option =>
+        option.setName("username")
+          .setDescription("Username to add")
+          .setRequired(true)
+      )
+  ].map(cmd => cmd.toJSON());
+
+  await client.application.commands.set(commands);
+  console.log("Slash commands registered.");
 });
 
 // ==============================
 // COMMAND HANDLER
 // ==============================
-client.on("messageCreate", (message) => {
-  if (message.author.bot) return;
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-  if (message.content.startsWith("!check ")) {
-    const name = message.content.split("!check ")[1]?.trim();
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    const raw = interaction.options.getString("username") || "";
+    const name = raw.toLowerCase().trim();
 
     if (!name) {
-      return message.reply("Provide a name.");
+      return interaction.editReply("⚠ Please provide a username.");
     }
 
-    const found = leechList.some(
-      (entry) => entry.toLowerCase() === name.toLowerCase()
-    );
-
-    if (found) {
-      message.reply(`❌ ${name} is in the leech list.`);
-    } else {
-      message.reply(`✅ ${name} is NOT in the leech list.`);
+    if (interaction.commandName === "check") {
+      if (leeches.has(name)) {
+        return interaction.editReply(`❌ ${name} is a leech.`);
+      } else {
+        return interaction.editReply(`✅ ${name} is not a leech.`);
+      }
     }
+
+    if (interaction.commandName === "add") {
+      if (leeches.has(name)) {
+        return interaction.editReply(`⚠ ${name} already exists in the list.`);
+      }
+
+      leeches.add(name);
+      saveLeeches();
+      await pushToGitHub();
+
+      return interaction.editReply(`✅ ${name} added and pushed to GitHub.`);
+    }
+
+  } catch (err) {
+    console.error("Command error:", err);
+    try {
+      await interaction.editReply("❌ Something went wrong. Check Render logs.");
+    } catch {}
   }
 });
 
 // ==============================
 // LOGIN
 // ==============================
-console.log("🔐 Attempting Discord login...");
-
-client.login(TOKEN)
-  .then(() => {
-    console.log("🔓 Login promise resolved.");
-  })
-  .catch((err) => {
-    console.error("❌ Login failed:", err);
-  });
+client.login(TOKEN);
