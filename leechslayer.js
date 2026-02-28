@@ -4,7 +4,7 @@ const axios = require("axios");
 const http = require("http");
 
 // ==============================
-// RENDER KEEP-ALIVE (Web Service)
+// RENDER KEEP-ALIVE
 // ==============================
 http.createServer((req, res) => {
   res.writeHead(200);
@@ -38,7 +38,7 @@ if (fs.existsSync(DATA_FILE)) {
 }
 
 // ==============================
-// SAVE LOCALLY
+// SAVE LOCAL
 // ==============================
 function saveLeeches() {
   fs.writeFileSync(DATA_FILE, JSON.stringify([...leeches], null, 2));
@@ -57,9 +57,7 @@ async function pushToGitHub() {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
-        {
-          headers: { Authorization: `token ${GITHUB_TOKEN}` }
-        }
+        { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
       );
       sha = data.sha;
     } catch (err) {
@@ -73,9 +71,7 @@ async function pushToGitHub() {
         content: Buffer.from(JSON.stringify([...leeches], null, 2)).toString("base64"),
         ...(sha && { sha })
       },
-      {
-        headers: { Authorization: `token ${GITHUB_TOKEN}` }
-      }
+      { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
     );
 
     console.log("GitHub updated.");
@@ -85,7 +81,7 @@ async function pushToGitHub() {
 }
 
 // ==============================
-// DISCORD CLIENT (MINIMAL INTENTS)
+// DISCORD CLIENT
 // ==============================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -126,45 +122,42 @@ client.once("ready", async () => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  try {
-    await interaction.deferReply({ ephemeral: true });
+  const raw = interaction.options.getString("username") || "";
+  const name = raw.toLowerCase().trim();
 
-    const raw = interaction.options.getString("username") || "";
-    const name = raw.toLowerCase().trim();
+  // 🔥 THIS LINE MAKES IT PUBLIC
+  await interaction.reply({
+    content: `📢 ${interaction.user.tag} used /${interaction.commandName} ${name}`,
+    ephemeral: false
+  });
 
-    if (!name) {
-      return interaction.editReply("Provide a username.");
+  if (interaction.commandName === "check") {
+    if (leeches.has(name)) {
+      return interaction.followUp(`❌ ${name} is a leech.`);
+    } else {
+      return interaction.followUp(`✅ ${name} is not a leech.`);
+    }
+  }
+
+  if (interaction.commandName === "add") {
+    if (leeches.has(name)) {
+      return interaction.followUp(`${name} already exists.`);
     }
 
-    if (interaction.commandName === "check") {
-      if (leeches.has(name)) {
-        return interaction.editReply(`❌ ${name} is a leech.`);
-      } else {
-        return interaction.editReply(`✅ ${name} is not a leech.`);
-      }
-    }
+    leeches.add(name);
+    saveLeeches();
+    await pushToGitHub();
 
-    if (interaction.commandName === "add") {
-      if (leeches.has(name)) {
-        return interaction.editReply(`${name} already exists.`);
-      }
-
-      leeches.add(name);
-      saveLeeches();
-      await pushToGitHub();
-
-      return interaction.editReply(`✅ ${name} added.`);
-    }
-
-  } catch (err) {
-    console.error("Command error:", err);
-    try {
-      await interaction.editReply("Something went wrong.");
-    } catch {}
+    return interaction.followUp(`✅ ${name} added.`);
   }
 });
 
 // ==============================
 // LOGIN
 // ==============================
-client.login(TOKEN);
+client.login(TOKEN)
+  .then(() => console.log("Discord login successful"))
+  .catch(err => {
+    console.error("Login failed:", err);
+    process.exit(1);
+  });
